@@ -21,10 +21,14 @@ const (
 // ErrUnspecified is a fallback for fail without cause, or nil.
 var ErrUnspecified = fmt.Errorf("unspecified error")
 
-// Fail is an error that could be handled in an HTTP response.
-// - Status: the HTTP Status code of the response (400-4XX, 500-5XX)
-// - Message: friendly error message (for clients)
-// - Details: slice of error details. e.g., form validation errors.
+/*
+Fail is an error that could be handled in an HTTP response.
+
+	- Status: the HTTP Status code of the response (400-4XX, 500-5XX)
+	- Message: friendly error message (for clients)
+	- Details: slice of error details. e.g., form validation errors.
+
+*/
 type Fail struct {
 	Status  int      `json:"-"`
 	Message string   `json:"message"`
@@ -63,12 +67,12 @@ func (f *Fail) String() string {
 
 /*
 Format implements the fmt.Formatter interface. This allows a Fail object to have
-Sprintf verbs for its values.
+fmt.Sprintf verbs for its values.
 
 	Verb	Description
 	----	---------------------------------------------------
 
-	%%  	Percent sign
+	%%		Percent sign
 	%d		All fail details separated with commas (``Fail.Details``)
 	%e		The original error (``error.Error``)
 	%f		File name where the fail was called, minus the path.
@@ -120,7 +124,7 @@ func (f *Fail) Format(s fmt.State, c rune) {
 }
 
 // Caller finds the file and line where the failure happened.
-// `skip` is the number of calls to skip, not including this call.
+// 'skip' is the number of calls to skip, not including this call.
 // If you use this from a point(s) which is not the error location, then that
 // call must be skipped.
 func (f *Fail) Caller(skip int) {
@@ -130,8 +134,8 @@ func (f *Fail) Caller(skip int) {
 }
 
 // BadRequest changes the Go error to a "Bad Request" fail.
-// `m` is the reason why this is a bad request.
-// `details` is an optional slice of details to explain the fail.
+// 'm' is the reason why this is a bad request.
+// 'details' is an optional slice of details to explain the fail.
 func (f *Fail) BadRequest(m string, details ...string) error {
 	f.Status = http.StatusBadRequest
 	f.Message = m
@@ -146,7 +150,7 @@ func BadRequest(m string, fields ...string) error {
 }
 
 // Forbidden changes an error to a "Forbidden" fail.
-// `m` is the reason why this action is forbidden.
+// 'm' is the reason why this action is forbidden.
 func (f *Fail) Forbidden(m string) error {
 	f.Status = http.StatusForbidden
 	f.Message = m
