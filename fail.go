@@ -46,6 +46,13 @@ func Cause(prev error) *Fail {
 	err := &Fail{
 		prev: prev,
 	}
+
+	switch prev.(type) {
+	case *Fail:
+		err.Status = prev.(*Fail).Status
+		err.Message = prev.(*Fail).Message
+	}
+
 	err.Caller(1)
 	return err
 }
