@@ -59,25 +59,24 @@ func (f *Fail) String() string {
 Format implements the fmt.Formatter interface. This allows a fail to have
 fmt.Sprintf verbs for its values. This is handy for sending to logs.
 
-Verb	Description
-----	---------------------------------------------------
-
-%%		Percent sign
-%d		All fail details separated with commas (``Fail.Details``)
-%e		The original error (``error.Error``)
-%f		File name where the fail was called, minus the path.
-%l		Line of the file for the fail
-%m		The message of the fail (``Fail.Message``)
-%s		HTTP Status code (``Fail.Status``)
+	Verb  Description
+	----  ---------------------------------------------------
+	%%    Percent sign
+	%d    All fail details separated with commas (``Fail.Details``)
+	%e    The original error (``error.Error``)
+	%f    File name where the fail was called, minus the path.
+	%l    Line of the file for the fail
+	%m    The message of the fail (``Fail.Message``)
+	%s    HTTP Status code (``Fail.Status``)
 
 Example:
 
-// Print file, line, and original error.
-// Note: we use index [1] to reuse `f` argument.
-f := fail.Cause(err)
-fmt.Printf("%[1]f:%[1]l %[1]e", f)
-// Output:
-// alerts.go:123 missing argument to vars
+	// Print file, line, and original error.
+	// Note: we use index [1] to reuse `f` argument.
+	f := fail.Cause(err)
+	fmt.Printf("%[1]f:%[1]l %[1]e", f)
+	// Output:
+	// alerts.go:123 missing argument to vars
 
 */
 func (f *Fail) Format(s fmt.State, c rune) {
@@ -122,10 +121,25 @@ func Cause(prev error) *Fail {
 	return err
 }
 
-// Because returns the previous error if it's a fail but keeps the current context
-// of where it was called. If the error err is not a fail, it will return an
-// Unexpected fail.
-// Use this function when you know that err is a fail.
+/*
+Because returns the previous error if it's a fail but keeps the current context
+of where it was called. If the error err is not a fail, it will return an
+Unexpected fail. Use this function when you know that err is a fail.
+
+Example:
+
+	func Authorize() error {
+		return fail.Unauthorized("you dont have access")
+	}
+
+	func main() {
+		if err := Authorize(); !fail.IsUnknown(err) {
+			// we know this error is a fail.
+			log.Println("cmd:", fail.Because(err))
+		}
+	}
+
+*/
 func Because(err error) error {
 	if e, ok := err.(*Fail); ok {
 		f := &Fail{
@@ -250,7 +264,7 @@ func Say(err error) (int, string) {
 	return http.StatusInternalServerError, messageUnexpected
 }
 
-// Error complements http.Error by sending a fail response.
+// Error complements `http.Error` by sending a fail response.
 func Error(w http.ResponseWriter, err error) {
 	status, m := Say(err)
 	http.Error(w, m, status)
