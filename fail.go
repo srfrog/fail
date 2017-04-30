@@ -15,14 +15,16 @@ import (
 )
 
 const (
-	textInternalServerError = "an internal error has occurred"
+	messageOK         = "OK"
+	messageNotFound   = "object not found"
+	messageUnexpected = "an unexpected error has occurred"
 )
 
-// ErrUnspecified is a fallback for fail without cause, or nil.
+// ErrUnspecified is an error with no cause or reason.
 var ErrUnspecified = fmt.Errorf("unspecified error")
 
 /*
-Fail is an error that could be handled in an HTTP response.
+Fail is an error that can be used in an HTTP response.
 
 	- Status: the HTTP Status code of the response (400-4XX, 500-5XX)
 	- Message: friendly error message (for clients)
@@ -39,24 +41,12 @@ type Fail struct {
 }
 
 // defaultFail is used with convenience functions.
-var defaultFail = &Fail{}
-
-// Cause wraps an error into a Fail that could be linked to another.
-func Cause(prev error) *Fail {
-	err := &Fail{
-		prev: prev,
-	}
-	err.Caller(1)
-	return err
-}
+var defaultFail = &Fail{prev: ErrUnspecified, file: "(none)"}
 
 // Error implements the error interface.
-// Ideally, you don't want to send out this to web clients, this is meant to be
-// used with logging and tools.
+// This function should be used for logs and not sent to clients.
+// It will unwrap all the stacked previous errors.
 func (f *Fail) Error() string {
-	if f.prev == nil {
-		f.prev = ErrUnspecified
-	}
 	return fmt.Sprintf("%s:%d: %s", f.file, f.line, f.prev.Error())
 }
 
@@ -66,28 +56,28 @@ func (f *Fail) String() string {
 }
 
 /*
-Format implements the fmt.Formatter interface. This allows a Fail object to have
-fmt.Sprintf verbs for its values.
+Format implements the fmt.Formatter interface. This allows a fail to have
+fmt.Sprintf verbs for its values. This is handy for sending to logs.
 
-	Verb	Description
-	----	---------------------------------------------------
+Verb	Description
+----	---------------------------------------------------
 
-	%%		Percent sign
-	%d		All fail details separated with commas (``Fail.Details``)
-	%e		The original error (``error.Error``)
-	%f		File name where the fail was called, minus the path.
-	%l		Line of the file for the fail
-	%m		The message of the fail (``Fail.Message``)
-	%s		HTTP Status code (``Fail.Status``)
+%%		Percent sign
+%d		All fail details separated with commas (``Fail.Details``)
+%e		The original error (``error.Error``)
+%f		File name where the fail was called, minus the path.
+%l		Line of the file for the fail
+%m		The message of the fail (``Fail.Message``)
+%s		HTTP Status code (``Fail.Status``)
 
 Example:
 
-	// Print file, line, and original error.
-	// Note: we use index [1] to reuse `f` argument.
-	f := fail.Cause(err)
-	fmt.Printf("%[1]f:%[1]l %[1]e", f)
-	// Output:
-	// alerts.go:123 missing argument to vars
+// Print file, line, and original error.
+// Note: we use index [1] to reuse `f` argument.
+f := fail.Cause(err)
+fmt.Printf("%[1]f:%[1]l %[1]e", f)
+// Output:
+// alerts.go:123 missing argument to vars
 
 */
 func (f *Fail) Format(s fmt.State, c rune) {
@@ -123,6 +113,32 @@ func (f *Fail) Format(s fmt.State, c rune) {
 
 }
 
+// Cause wraps an error into a fail so it can be used in a response.
+func Cause(prev error) *Fail {
+	err := &Fail{
+		prev: prev,
+	}
+	err.Caller(1)
+	return err
+}
+
+// Because returns the previous error if it's a fail but keeps the current context
+// of where it was called. If the error err is not a fail, it will return an
+// Unexpected fail.
+// Use this function when you know that err is a fail.
+func Because(err error) error {
+	if e, ok := err.(*Fail); ok {
+		f := &Fail{
+			Status:  e.Status,
+			Message: e.Message,
+			Details: e.Details,
+		}
+		f.Caller(1)
+		return f
+	}
+	return Cause(err).Unexpected()
+}
+
 // Caller finds the file and line where the failure happened.
 // 'skip' is the number of calls to skip, not including this call.
 // If you use this from a point(s) which is not the error location, then that
@@ -133,7 +149,7 @@ func (f *Fail) Caller(skip int) {
 	f.line = line
 }
 
-// BadRequest changes the Go error to a "Bad Request" fail.
+// BadRequest changes the error to a "Bad Request" fail.
 // 'm' is the reason why this is a bad request.
 // 'details' is an optional slice of details to explain the fail.
 func (f *Fail) BadRequest(m string, details ...string) error {
@@ -143,10 +159,26 @@ func (f *Fail) BadRequest(m string, details ...string) error {
 	return f
 }
 
-// BadRequest is a convenience function to return a Bad Request fail when there's
-// no Go error.
+// BadRequest is a convenience function to return a BadRequest fail when there's
+// no error.
 func BadRequest(m string, fields ...string) error {
 	return defaultFail.BadRequest(m, fields...)
+}
+
+// Conflict changes the error to a "Conflict" fail.
+// 'm' is the reason why this is a conflict.
+// 'details' is an optional slice of details to explain the fail.
+func (f *Fail) Conflict(m string, details ...string) error {
+	f.Status = http.StatusConflict
+	f.Message = m
+	f.Details = details
+	return f
+}
+
+// Conflict is a convenience function to return a Conflict fail when there's
+// no error.
+func Conflict(m string, fields ...string) error {
+	return defaultFail.Conflict(m, fields...)
 }
 
 // Forbidden changes an error to a "Forbidden" fail.
@@ -158,23 +190,23 @@ func (f *Fail) Forbidden(m string) error {
 }
 
 // Forbidden is a convenience function to return a Forbidden fail when there's
-// no Go error.
+// no error.
 func Forbidden(m string) error {
 	return defaultFail.Forbidden(m)
 }
 
 // NotFound changes the error to an "Not Found" fail.
 func (f *Fail) NotFound(m ...string) error {
-	if m == nil {
-		m = []string{"object not found"}
-	}
 	f.Status = http.StatusNotFound
-	f.Message = m[0]
+	f.Message = messageNotFound
+	if m != nil {
+		f.Message = m[0]
+	}
 	return f
 }
 
 // NotFound is a convenience function to return a Not Found fail when there's
-// no Go error.
+// no error.
 func NotFound(m ...string) error {
 	return defaultFail.NotFound(m...)
 }
@@ -195,42 +227,45 @@ func Unauthorized(m string) error {
 // Unexpected morphs the error into an "Internal Server Error" fail.
 func (f *Fail) Unexpected() error {
 	f.Status = http.StatusInternalServerError
-	f.Message = textInternalServerError
+	f.Message = messageUnexpected
 	return f
 }
 
 // Unexpected is a convenience function to return an Internal Server Error fail
-// when there's no Go error.
+// when there's no error.
 func Unexpected() error {
 	return defaultFail.Unexpected()
 }
 
-// Say returns the HTTP status and message response for a handled fail.
+// Say returns the HTTP status and message response of a fail.
 // If the error is nil, then there's no error -- say everything is OK.
 // If the error is not a handled fail, then convert it to an unexpected fail.
 func Say(err error) (int, string) {
 	switch e := err.(type) {
 	case nil:
-		return http.StatusOK, "OK"
+		return http.StatusOK, messageOK
 	case *Fail:
 		return e.Status, e.Message
 	}
-
-	// handle this unhandled unknown error
-	f := &Fail{
-		Status:  http.StatusInternalServerError,
-		Message: textInternalServerError,
-		prev:    err,
-	}
-	f.Caller(2)
-
-	return f.Status, f.Message
+	return http.StatusInternalServerError, messageUnexpected
 }
 
-// IsBadRequest returns true if fail is a Bad Request fail, false otherwise.
+// Error complements http.Error by sending a fail response.
+func Error(w http.ResponseWriter, err error) {
+	status, m := Say(err)
+	http.Error(w, m, status)
+}
+
+// IsBadRequest returns true if fail is a BadRequest fail, false otherwise.
 func IsBadRequest(err error) bool {
 	e, ok := err.(*Fail)
 	return ok && e.Status == http.StatusBadRequest
+}
+
+// IsConflict returns true if fail is a Conflict fail, false otherwise.
+func IsConflict(err error) bool {
+	e, ok := err.(*Fail)
+	return ok && e.Status == http.StatusConflict
 }
 
 // IsUnauthorized returns true if fail is a Unauthorized fail, false otherwise.
@@ -245,21 +280,19 @@ func IsForbidden(err error) bool {
 	return ok && e.Status == http.StatusForbidden
 }
 
-// IsNotFound returns true if fail is a Not Found fail, false otherwise.
+// IsNotFound returns true if fail is a NotFound fail, false otherwise.
 func IsNotFound(err error) bool {
 	e, ok := err.(*Fail)
 	return ok && e.Status == http.StatusNotFound
 }
 
-// IsUnexpected returns true if fail is an internal fail, false otherwise.
-// This type of fail might be coming from an unhandled source.
+// IsUnexpected returns true if fail is an Unexpected fail, false otherwise.
 func IsUnexpected(err error) bool {
 	e, ok := err.(*Fail)
 	return ok && e.Status == http.StatusInternalServerError
 }
 
-// IsUnknown returns true if the fail is not handled through this interface,
-// false otheriwse.
+// IsUnknown returns true if err is not handled as a fail, false otheriwse.
 func IsUnknown(err error) bool {
 	_, ok := err.(*Fail)
 	return !ok

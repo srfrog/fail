@@ -20,4 +20,4 @@ the HTTP status code and message that can be sent via ``http.Error``.
 package fail
 
 // Version is the version of this package.
-const Version = "0.0.1"
+const Version = "0.0.2"

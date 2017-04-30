@@ -35,8 +35,7 @@ import "github.com/codehack/fail"
 http.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 	// we want a POST request, this will fail.
 	if r.Method != "POST" {
-		status, m := fail.Say(fail.BadRequest("request not POST"))
-		http.Error(w, m, status)
+		fail.Error(w, fail.BadRequest("request not POST"))
 		return
 	}
 
@@ -53,24 +52,21 @@ http.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		)
 		switch {
 		case err == json.SyntaxError:
-			status, m = fail.Say(fail.Cause(err).Unexpected())
+			fail.Error(w, fail.Cause(err).Unexpected())
 		default:
-			status, m = fail.Say(fail.Cause(err).BadRequest("your payload is terrible"))
+			fail.Error(w, fail.Cause(err).BadRequest("your payload is terrible"))
 		}
-		http.Error(w, m, status)
 		return
 	}
 
 	// if we manage to get this far, this will fail.
 	if err := saveUserDB(&payload); err != nil {
-		status, m := fail.Say(fail.Cause(err).Unexpected())
-		http.Error(w, m, status)
+		fail.Error(w, fail.Cause(err).Unexpected())
 		return
 	}
 
 	// Hah hah, this will fail.
-	status, m := fail.Say(fail.Forbidden("resistance is futile."))
-	http.Error(w, m, status)
+	fail.Error(w, fail.Forbidden("resistance is futile."))
 })
 ```
 
