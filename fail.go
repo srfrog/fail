@@ -232,6 +232,17 @@ func (f *Fail) Unauthorized(m string) error {
 	return f
 }
 
+// Because uses the previous Fail's status and message.
+func (f *Fail) Because() {
+	if f.prev != nil {
+		switch f.prev.(type) {
+		case *Fail:
+			f.Message = f.prev.(*Fail).Message
+			f.Status = f.prev.(*Fail).Status
+		}
+	}
+}
+
 // Unauthorized is a convenience function to return an Unauthorized fail when there's
 // no Go error.
 func Unauthorized(m string) error {
