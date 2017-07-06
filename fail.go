@@ -32,16 +32,13 @@ Fail is an error that can be used in an HTTP response.
 
 */
 type Fail struct {
-	Status  int      `json:"-"`
+	Status  int      `json:"status"`
 	Message string   `json:"message"`
 	Details []string `json:"details,omitempty"`
 	prev    error
 	file    string
 	line    int
 }
-
-// defaultFail is used with convenience functions.
-var defaultFail = &Fail{prev: ErrUnspecified, file: "(none)"}
 
 // Error implements the error interface.
 // This function should be used for logs and not sent to clients.
@@ -114,11 +111,11 @@ func (f *Fail) Format(s fmt.State, c rune) {
 
 // Cause wraps an error into a fail so it can be used in a response.
 func Cause(prev error) *Fail {
-	err := &Fail{
+	f := &Fail{
 		prev: prev,
 	}
-	err.Caller(1)
-	return err
+	f.Caller(1)
+	return f
 }
 
 /*
@@ -146,6 +143,7 @@ func Because(err error) error {
 			Status:  e.Status,
 			Message: e.Message,
 			Details: e.Details,
+			prev:    e.prev,
 		}
 		f.Caller(1)
 		return f
@@ -158,6 +156,10 @@ func Because(err error) error {
 // If you use this from a point(s) which is not the error location, then that
 // call must be skipped.
 func (f *Fail) Caller(skip int) {
+	// check if this cause is internal and show the proper file:line.
+	if f.prev == ErrUnspecified {
+		skip++
+	}
 	_, file, line, _ := runtime.Caller(skip + 1)
 	f.file = file[strings.LastIndex(file, "/")+1:]
 	f.line = line
@@ -176,7 +178,7 @@ func (f *Fail) BadRequest(m string, details ...string) error {
 // BadRequest is a convenience function to return a BadRequest fail when there's
 // no error.
 func BadRequest(m string, fields ...string) error {
-	return defaultFail.BadRequest(m, fields...)
+	return Cause(ErrUnspecified).BadRequest(m, fields...)
 }
 
 // Conflict changes the error to a "Conflict" fail.
@@ -192,7 +194,7 @@ func (f *Fail) Conflict(m string, details ...string) error {
 // Conflict is a convenience function to return a Conflict fail when there's
 // no error.
 func Conflict(m string, fields ...string) error {
-	return defaultFail.Conflict(m, fields...)
+	return Cause(ErrUnspecified).Conflict(m, fields...)
 }
 
 // Forbidden changes an error to a "Forbidden" fail.
@@ -206,15 +208,16 @@ func (f *Fail) Forbidden(m string) error {
 // Forbidden is a convenience function to return a Forbidden fail when there's
 // no error.
 func Forbidden(m string) error {
-	return defaultFail.Forbidden(m)
+	return Cause(ErrUnspecified).Forbidden(m)
 }
 
 // NotFound changes the error to an "Not Found" fail.
 func (f *Fail) NotFound(m ...string) error {
 	f.Status = http.StatusNotFound
-	f.Message = messageNotFound
 	if m != nil {
 		f.Message = m[0]
+	} else {
+		f.Message = messageNotFound
 	}
 	return f
 }
@@ -222,7 +225,7 @@ func (f *Fail) NotFound(m ...string) error {
 // NotFound is a convenience function to return a Not Found fail when there's
 // no error.
 func NotFound(m ...string) error {
-	return defaultFail.NotFound(m...)
+	return Cause(ErrUnspecified).NotFound(m...)
 }
 
 // Unauthorized changes the error to an "Unauthorized" fail.
@@ -235,7 +238,7 @@ func (f *Fail) Unauthorized(m string) error {
 // Unauthorized is a convenience function to return an Unauthorized fail when there's
 // no Go error.
 func Unauthorized(m string) error {
-	return defaultFail.Unauthorized(m)
+	return Cause(ErrUnspecified).Unauthorized(m)
 }
 
 // Unexpected morphs the error into an "Internal Server Error" fail.
@@ -248,7 +251,7 @@ func (f *Fail) Unexpected() error {
 // Unexpected is a convenience function to return an Internal Server Error fail
 // when there's no error.
 func Unexpected() error {
-	return defaultFail.Unexpected()
+	return Cause(ErrUnspecified).Unexpected()
 }
 
 // Say returns the HTTP status and message response of a fail.
